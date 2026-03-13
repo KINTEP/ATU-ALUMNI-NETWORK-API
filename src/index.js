@@ -22,6 +22,7 @@ import connectionRoutes from "./routes/connectionRoutes.js";
 import adminUserRoutes from "./routes/adminUserRoutes.js";
 import notificationRoutes from './routes/notificationRoutes.js';
 import uploadRoutes from "./routes/uploadRoutes.js";
+import projectRoutes from "./routes/projectRoutes.js";
 
 // Import middlewares
 import { apiLimiter } from "./middlewares/rateLimitMiddleware.js";
@@ -32,26 +33,22 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 8080;
 
-// Get __dirname equivalent in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ================== MIDDLEWARE CONFIGURATION ==================
 
-// 1. Security headers
 app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// 2. CORS
-// 2. CORS
 app.use(cors({
     origin: [
         'https://atu-alumni-network.web.app',
         'https://atu-alumni-network.firebaseapp.com',
         'http://localhost:4200',
         'http://localhost:3000',
-        'http://localhost:5173' 
+        'http://localhost:5173'
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -59,23 +56,33 @@ app.use(cors({
 }));
 
 app.set('trust proxy', 1);
-
-// 3. Body parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 4. Rate limiting for API routes
+// ================== SERVE UPLOADED IMAGES FIRST (MUST BE BEFORE RATE LIMITER!) ==================
+const uploadsPath = path.join(__dirname, '../public/uploads');
+console.log('Serving static files from:', uploadsPath);
+
+app.use('/api/uploads', express.static(uploadsPath, {
+    setHeaders: (res, filePath) => {
+        if (filePath.match(/\.(jpg|jpeg)$/i)) res.setHeader('Content-Type', 'image/jpeg');
+        if (filePath.endsWith('.png')) res.setHeader('Content-Type', 'image/png');
+        if (filePath.endsWith('.gif')) res.setHeader('Content-Type', 'image/gif');
+        if (filePath.endsWith('.webp')) res.setHeader('Content-Type', 'image/webp');
+    }
+}));
+
+// ================== RATE LIMITER — NOW SKIPS /api/uploads ==================
 app.use('/api/', apiLimiter);
 
 // ================== ROUTES ==================
 
-// Root route
 app.get("/", async (req, res) => {
     try {
         const result = await pool.query("SELECT current_database(), NOW() as server_time");
         res.json({
             success: true,
-            message: "🎓 ATU Alumni Network API",
+            message: "ATU Alumni Network API",
             version: "1.0.0",
             database: result.rows[0].current_database,
             server_time: result.rows[0].server_time,
@@ -86,6 +93,7 @@ app.get("/", async (req, res) => {
                 events: "/api/events",
                 forums: "/api/forums",
                 news: "/api/news",
+                projects: "/api/projects",
                 tracerStudy: "/api/tracer-study",
                 academic: "/api/academic",
                 messages: "/api/messages",
@@ -104,7 +112,6 @@ app.get("/", async (req, res) => {
     }
 });
 
-// Health check
 app.get("/api/health", async (req, res) => {
     try {
         await pool.query("SELECT 1");
@@ -124,7 +131,6 @@ app.get("/api/health", async (req, res) => {
     }
 });
 
-// Test endpoint to list uploaded files
 app.get("/api/test/images", (req, res) => {
     try {
         const profilesDir = path.join(__dirname, '../public/uploads/profiles');
@@ -144,7 +150,7 @@ app.get("/api/test/images", (req, res) => {
             directory: profilesDir,
             count: files.length,
             files: files,
-            urls: files.map(f => `http://localhost:${port}/api/uploads/profiles/${f}`)
+            urls: files.map(f => `${req.protocol}://${req.get('host')}/api/uploads/profiles/${f}`)
         });
     } catch (error) {
         res.status(500).json({
@@ -155,13 +161,13 @@ app.get("/api/test/images", (req, res) => {
 });
 
 // ================== API ROUTES ==================
-
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/jobs", jobRoutes);
 app.use("/api/events", eventRoutes);
 app.use("/api/forums", forumRoutes);
 app.use("/api/news", newsRoutes);
+app.use("/api/projects", projectRoutes);
 app.use("/api/tracer-study", tracerStudyRoutes);
 app.use("/api/academic", academicRoutes);
 app.use("/api/messages", messageRoutes);
@@ -170,68 +176,27 @@ app.use("/api/admin/users", adminUserRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use("/api/upload", uploadRoutes);
 
-// ================== STATIC FILES ==================
-
-// Serve static files at /api/uploads (consistent with /api prefix)
-const uploadsPath = path.join(__dirname, '../public/uploads');
-console.log('📁 Serving static files from:', uploadsPath);
-
-app.use('/api/uploads', express.static(uploadsPath, {
-    setHeaders: (res, filePath) => {
-        // Set proper MIME types
-        if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
-            res.setHeader('Content-Type', 'image/jpeg');
-        } else if (filePath.endsWith('.png')) {
-            res.setHeader('Content-Type', 'image/png');
-        } else if (filePath.endsWith('.gif')) {
-            res.setHeader('Content-Type', 'image/gif');
-        } else if (filePath.endsWith('.webp')) {
-            res.setHeader('Content-Type', 'image/webp');
-        }
-    }
-}));
-
 // ================== ERROR HANDLERS ==================
-
-// 404 handler (must be after all routes)
 app.use(notFound);
-
-// Global error handler (must be last)
 app.use(errorHandler);
 
 // ================== START SERVER ==================
-
 app.listen(port, () => {
     console.log(`
 ╔════════════════════════════════════════╗
-║  🎓 ATU Alumni Network API            ║
+║  ATU Alumni Network API                ║
 ║                                        ║
 ║  Server: http://localhost:${port}       ║
-║  Status: Running ✅                    ║
+║  Status: Running                       ║
 ║  Environment: ${process.env.NODE_ENV || 'development'}              ║
 ╚════════════════════════════════════════╝
 
-📚 API Documentation:
-   - Auth:          /api/auth
-   - Users:         /api/users
-   - Jobs:          /api/jobs
-   - Events:        /api/events
-   - Forums:        /api/forums
-   - News:          /api/news
-   - Tracer Study:  /api/tracer-study
-   - Academic:      /api/academic
-   - Messages:      /api/messages
-   - Notifications: /api/notifications
-   - Connections:   /api/connections
-   - Upload:        /api/upload
-
-🖼️  Static Files:    /api/uploads
-🔍 Health Check:    /api/health
-📊 Test Images:     /api/test/images
+  Static Files:    /api/uploads
+  Health Check:    /api/health
+  Test Images:     /api/test/images
     `);
 });
 
-// Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
     console.error('Unhandled Promise Rejection:', err);
 });

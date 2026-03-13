@@ -32,24 +32,26 @@ const adminUserController = {
                         results.failed++;
                         results.details.push({
                             email: alumnus.email,
+                            student_id: alumnus.student_id,
                             status: 'failed',
                             error: 'Missing required fields (email, first_name, last_name)'
                         });
                         continue;
                     }
 
-                    // Check if user already exists
+                    // Check if user already exists by email or student_id
                     const existingUser = await pool.query(
-                        "SELECT id FROM users WHERE email = $1",
-                        [alumnus.email]
+                        "SELECT id FROM users WHERE email = $1 OR (student_id = $2 AND student_id IS NOT NULL)",
+                        [alumnus.email, alumnus.student_id]
                     );
 
                     if (existingUser.rows.length > 0) {
                         results.skipped++;
                         results.details.push({
                             email: alumnus.email,
+                            student_id: alumnus.student_id,
                             status: 'skipped',
-                            reason: 'User already exists'
+                            reason: 'User already exists (duplicate email or student ID)'
                         });
                         continue;
                     }
@@ -65,11 +67,11 @@ const adminUserController = {
                             phone_number, role, graduation_year, program_of_study, major,
                             faculty, department, current_company, job_title,
                             current_city, current_country, bio, skills, interests,
-                            is_verified
+                            is_verified, student_id
                         ) VALUES (
                             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
-                        ) RETURNING id, email, first_name, last_name
+                            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+                        ) RETURNING id, email, first_name, last_name, student_id
                     `;
 
                     const values = [
@@ -79,7 +81,7 @@ const adminUserController = {
                         alumnus.last_name,
                         alumnus.other_name || null,
                         alumnus.phone_number || null,
-                        'alumni', // Default role
+                        'alumni',
                         alumnus.graduation_year || null,
                         alumnus.program_of_study || null,
                         alumnus.major || null,
@@ -92,7 +94,8 @@ const adminUserController = {
                         alumnus.bio || null,
                         alumnus.skills || null,
                         alumnus.interests || null,
-                        true // Auto-verify imported users
+                        true,
+                        alumnus.student_id || null
                     ];
 
                     const result = await pool.query(insertQuery, values);
@@ -101,6 +104,7 @@ const adminUserController = {
                     results.imported++;
                     results.details.push({
                         email: alumnus.email,
+                        student_id: alumnus.student_id,
                         status: 'imported',
                         userId: newUser.id
                     });
@@ -120,6 +124,7 @@ const adminUserController = {
                     results.failed++;
                     results.details.push({
                         email: alumnus.email,
+                        student_id: alumnus.student_id,
                         status: 'failed',
                         error: error.message
                     });
@@ -231,61 +236,59 @@ const adminUserController = {
         }
     },
 
-    // Delete user
-    // Hard delete user (for testing only)
-deleteUser: async (req, res) => {
-    try {
-        const { id } = req.params;
-        
-        // Actually delete from database
-        const result = await pool.query(
-            "DELETE FROM users WHERE id = $1 RETURNING id",
-            [id]
-        );
+    // ==================== DELETE USER ====================
+    deleteUser: async (req, res) => {
+        try {
+            const { id } = req.params;
+            
+            const result = await pool.query(
+                "DELETE FROM users WHERE id = $1 RETURNING id",
+                [id]
+            );
 
-        if (result.rowCount === 0) {
-            return res.status(404).json({
+            if (result.rowCount === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: "User not found"
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "User deleted permanently"
+            });
+        } catch (error) {
+            console.error("Delete user error:", error);
+            res.status(500).json({
                 success: false,
-                error: "User not found"
+                error: "Failed to delete user"
             });
         }
+    },
 
-        res.status(200).json({
-            success: true,
-            message: "User deleted permanently"
-        });
-    } catch (error) {
-        console.error("Delete user error:", error);
-        res.status(500).json({
-            success: false,
-            error: "Failed to delete user"
-        });
-    }
-},
+    // ==================== REACTIVATE USER ====================
+    reactivateUser: async (req, res) => {
+        try {
+            const { id } = req.params;
+            
+            await pool.query(
+                "UPDATE users SET is_active = true WHERE id = $1",
+                [id]
+            );
 
-// Reactivate user
-reactivateUser: async (req, res) => {
-    try {
-        const { id } = req.params;
-        
-        await pool.query(
-            "UPDATE users SET is_active = true WHERE id = $1",
-            [id]
-        );
+            res.status(200).json({
+                success: true,
+                message: "User reactivated successfully"
+            });
+        } catch (error) {
+            console.error("Reactivate user error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to reactivate user"
+            });
+        }
+    },
 
-        res.status(200).json({
-            success: true,
-            message: "User reactivated successfully"
-        });
-    } catch (error) {
-        console.error("Reactivate user error:", error);
-        res.status(500).json({
-            success: false,
-            error: "Failed to reactivate user"
-        });
-    }
-},
-    
     // ==================== RESEND CREDENTIALS ====================
     resendCredentials: async (req, res) => {
         try {
