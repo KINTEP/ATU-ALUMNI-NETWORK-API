@@ -20,12 +20,12 @@ router.delete("/categories/:id", verifyToken, isAdmin, forumController.deleteCat
 router.get("/posts", optionalAuth, forumController.getAllPosts);
 router.get("/posts/popular", optionalAuth, forumController.getPopularPosts);
 router.get("/posts/trending", optionalAuth, forumController.getTrendingPosts);
+router.get("/posts/my-posts", verifyToken, forumController.getMyPosts);
 router.get("/posts/:id", optionalAuth, forumController.getPostById);
 router.get("/posts/:id/replies", optionalAuth, forumController.getPostReplies);
 router.get("/posts/:id/replies/:replyId/nested", optionalAuth, forumController.getNestedReplies);
 
 // Protected routes (authentication required)
-router.get("/posts/my-posts", verifyToken, forumController.getMyPosts);
 router.post("/posts", verifyToken, forumController.createPost);
 router.put("/posts/:id", verifyToken, forumController.updatePost); // Owner only
 router.delete("/posts/:id", verifyToken, forumController.deletePost); // Owner or admin
