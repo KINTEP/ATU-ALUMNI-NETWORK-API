@@ -51,7 +51,7 @@ const authController = {
             const token = jwt.sign(
                 { userId: user.id, email: user.email, role: user.role },
                 process.env.JWT_SECRET,
-                { expiresIn: process.env.JWT_EXPIRE || '7d' }
+                { expiresIn: process.env.JWT_EXPIRE || '1m' }
             );
 
             res.status(201).json({
@@ -131,7 +131,7 @@ const authController = {
             const token = jwt.sign(
                 { userId: user.id, email: user.email, role: user.role },
                 process.env.JWT_SECRET,
-                { expiresIn: process.env.JWT_EXPIRE || '7d' }
+                { expiresIn: process.env.JWT_EXPIRE || '1m' }
             );
 
             res.status(200).json({
@@ -294,7 +294,7 @@ const authController = {
             const resetToken = jwt.sign(
                 { userId: result.rows[0].id, type: 'password_reset' },
                 process.env.JWT_SECRET,
-                { expiresIn: '1h' }
+                { expiresIn: '1m' }
             );
 
             // In production, send email with reset link
