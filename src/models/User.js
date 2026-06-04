@@ -16,7 +16,7 @@ const UserModel = {
                 -- Personal Information
                 first_name VARCHAR(100) NOT NULL,
                 last_name VARCHAR(100) NOT NULL,
-                other_name VARCHAR(100),  -- NEW: Middle name or other names
+                other_name VARCHAR(100),
                 phone_number VARCHAR(20),
                 date_of_birth DATE,
                 gender VARCHAR(20) CHECK (gender IN ('male', 'female', 'other', 'prefer_not_to_say')),
@@ -24,7 +24,7 @@ const UserModel = {
                 -- Academic Information
                 student_id VARCHAR(50),
                 graduation_year INTEGER,
-                program_of_study VARCHAR(100),  -- RENAMED from 'degree'
+                program_of_study VARCHAR(100),
                 major VARCHAR(100),
                 faculty VARCHAR(100),
                 department VARCHAR(100),
@@ -52,8 +52,8 @@ const UserModel = {
                 website_url VARCHAR(500),
                 
                 -- Skills & Interests
-                skills TEXT[], -- Array of skills
-                interests TEXT[], -- Array of interests
+                skills TEXT[],
+                interests TEXT[],
                 
                 -- Account Status
                 is_verified BOOLEAN DEFAULT FALSE,
@@ -65,6 +65,9 @@ const UserModel = {
                 profile_visibility VARCHAR(20) DEFAULT 'public' CHECK (profile_visibility IN ('public', 'alumni_only', 'private')),
                 show_email BOOLEAN DEFAULT FALSE,
                 show_phone BOOLEAN DEFAULT FALSE,
+                
+                -- ✅ Bulk import: FALSE = pre-created by admin, TRUE = alumni has set their own password
+                is_claimed BOOLEAN DEFAULT FALSE,
                 
                 -- Timestamps
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -78,16 +81,17 @@ const UserModel = {
             CREATE INDEX IF NOT EXISTS idx_users_major ON users(major);
             CREATE INDEX IF NOT EXISTS idx_users_program ON users(program_of_study);
             CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active);
+            CREATE INDEX IF NOT EXISTS idx_users_is_claimed ON users(is_claimed);
             CREATE INDEX IF NOT EXISTS idx_users_created_at ON users(created_at);
 
             -- Create function to auto-update updated_at timestamp
             CREATE OR REPLACE FUNCTION update_updated_at_column()
-            RETURNS TRIGGER AS $$
+            RETURNS TRIGGER AS \$\$
             BEGIN
                 NEW.updated_at = CURRENT_TIMESTAMP;
                 RETURN NEW;
             END;
-            $$ language 'plpgsql';
+            \$\$ language 'plpgsql';
 
             -- Create trigger to auto-update updated_at
             DROP TRIGGER IF EXISTS update_users_updated_at ON users;

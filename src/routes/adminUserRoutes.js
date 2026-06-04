@@ -17,8 +17,15 @@ router.post("/add-alumni", adminUserController.addSingleAlumni);
 // Resend credentials to specific user
 router.post("/resend-credentials/:user_id", adminUserController.resendCredentials);
 
-// Add these routes
-router.delete('/:id', adminUserController.deleteUser);
+// ✅ FIX: Was pointing to deleteUser (hard delete) which no longer exists.
+// Now points to deactivateUser (soft delete — sets is_active = false, preserves all data)
+router.delete('/:id', adminUserController.deactivateUser);
+
+// Permanent delete — requires { confirm: 'DELETE_PERMANENTLY' } in request body
+// Use only for GDPR/data removal requests
+router.delete('/:id/permanent', adminUserController.permanentDeleteUser);
+
+// Reactivate a deactivated user
 router.post('/:id/reactivate', adminUserController.reactivateUser);
 
 export default router;

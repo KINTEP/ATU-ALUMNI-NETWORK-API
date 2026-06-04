@@ -13,15 +13,19 @@ const NewsArticleModel = {
                 author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                 
                 -- Article Content
-                title VARCHAR(255) NOT NULL,
-                slug VARCHAR(255) UNIQUE NOT NULL,
+                title TEXT NOT NULL,
+                slug TEXT UNIQUE NOT NULL,
                 excerpt TEXT NOT NULL,
                 content TEXT NOT NULL,
-                featured_image VARCHAR(500),
+                featured_image TEXT,
                 
                 -- Classification
-                category VARCHAR(50) NOT NULL CHECK (category IN ('Academic', 'Career', 'Social', 'Alumni', 'University', 'General')),
+                category TEXT NOT NULL CHECK (category IN ('Academic', 'Career', 'Social', 'Alumni', 'University', 'General')),
                 tags TEXT[],
+                
+                -- SEO
+                meta_description TEXT,
+                keywords TEXT,
                 
                 -- Status
                 is_featured BOOLEAN DEFAULT FALSE,
@@ -38,7 +42,7 @@ const NewsArticleModel = {
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 
                 -- Constraints
-                CHECK (char_length(title) >= 5 AND char_length(title) <= 255),
+                CHECK (char_length(title) >= 5),
                 CHECK (char_length(excerpt) >= 20),
                 CHECK (char_length(content) >= 50)
             );
@@ -62,14 +66,14 @@ const NewsArticleModel = {
 
             -- Create trigger to set published_at when is_published changes to true
             CREATE OR REPLACE FUNCTION set_published_at()
-            RETURNS TRIGGER AS $$
+            RETURNS TRIGGER AS \$\$
             BEGIN
                 IF NEW.is_published = TRUE AND (OLD.is_published = FALSE OR OLD.published_at IS NULL) THEN
                     NEW.published_at = CURRENT_TIMESTAMP;
                 END IF;
                 RETURN NEW;
             END;
-            $$ LANGUAGE plpgsql;
+            \$\$ LANGUAGE plpgsql;
 
             DROP TRIGGER IF EXISTS trigger_set_published_at ON news_articles;
             CREATE TRIGGER trigger_set_published_at

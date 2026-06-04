@@ -1,7 +1,8 @@
 // src/routes/userRoutes.js
 import express from "express";
 import userController from "../controllers/userController.js";
-import { verifyToken, isAdmin, optionalAuth } from "../middlewares/authMiddleware.js";
+import { verifyToken, isOwnerOrAdmin, optionalAuth } from "../middlewares/authMiddleware.js"; // ✅ added isOwnerOrAdmin
+
 
 const router = express.Router();
 
@@ -11,11 +12,11 @@ router.get("/stats/overview", userController.getUserStats);
 router.get("/:id", optionalAuth, userController.getUserById);
 
 // Protected routes (authentication required - user can only update themselves)
-router.put("/:id", verifyToken, userController.updateUser); // User updates their own profile
-router.patch("/:id/password", verifyToken, userController.updatePassword); // User changes their own password
+router.put("/:id", verifyToken, isOwnerOrAdmin, userController.updateUser);
+router.patch("/:id/password", verifyToken, isOwnerOrAdmin, userController.updatePassword);
 
 // Admin only routes
-router.delete("/:id", verifyToken, isAdmin, userController.deleteUser);
-router.post("/:id/reactivate", verifyToken, isAdmin, userController.reactivateUser);
+//router.delete("/:id", verifyToken, isAdmin, userController.deleteUser);
+//router.post("/:id/reactivate", verifyToken, isAdmin, userController.reactivateUser);
 
 export default router;

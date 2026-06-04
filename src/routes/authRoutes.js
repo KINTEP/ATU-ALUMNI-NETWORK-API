@@ -26,4 +26,8 @@ router.get("/me", verifyToken, authController.getMe);
 router.post("/change-password", verifyToken, authController.changePassword);
 router.post("/logout", verifyToken, authController.logout);
 
+// Add these two lines with the public routes
+router.post("/verify-alumni", authLimiter, authController.verifyAlumni);
+router.post("/self-register", registrationLimiter, authController.selfRegister);
+
 export default router;

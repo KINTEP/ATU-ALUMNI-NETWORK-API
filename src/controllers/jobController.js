@@ -2,46 +2,30 @@
 import pool from "../config/db.js";
 
 const jobController = {
-    // Create new job (Admin only)
+
+    // ==================== CREATE JOB (Admin only) ====================
     createJob: async (req, res) => {
         try {
+            // ✅ FIX: was req.body.posted_by — admin could post as any user
+            const posted_by = req.user.id || req.user.userId;
+
             const {
-                posted_by,
-                company_name,
-                company_logo,
-                company_website,
-                industry,
-                job_title,
-                job_description,
-                job_type,
-                location,
-                location_type,
-                salary_min,
-                salary_max,
-                salary_currency,
-                salary_period,
-                experience_level,
-                education_required,
-                skills_required,
-                responsibilities,
-                qualifications,
-                benefits,
-                application_deadline,
-                application_url,
-                application_email,
-                positions_available,
-                is_featured
+                company_name, company_logo, company_website, industry,
+                job_title, job_description, job_type, location, location_type,
+                salary_min, salary_max, salary_currency, salary_period,
+                experience_level, education_required, skills_required,
+                responsibilities, qualifications, benefits,
+                application_deadline, application_url, application_email,
+                positions_available, is_featured
             } = req.body;
 
-            // Validate required fields
-            if (!posted_by || !company_name || !job_title || !job_description || !job_type || !location) {
+            if (!company_name || !job_title || !job_description || !job_type || !location) {
                 return res.status(400).json({
                     success: false,
-                    error: "Posted by, company name, job title, description, job type, and location are required"
+                    error: "Company name, job title, description, job type, and location are required"
                 });
             }
 
-            // Validate job_type
             const validJobTypes = ['Full-time', 'Part-time', 'Contract', 'Internship', 'Temporary'];
             if (!validJobTypes.includes(job_type)) {
                 return res.status(400).json({
@@ -50,20 +34,6 @@ const jobController = {
                 });
             }
 
-            // Check if posted_by user exists and is admin
-            const userCheck = await pool.query(
-                "SELECT id, role FROM users WHERE id = $1 AND is_active = true",
-                [posted_by]
-            );
-
-            if (userCheck.rows.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    error: "User not found"
-                });
-            }
-
-            // Create job
             const result = await pool.query(
                 `INSERT INTO jobs (
                     posted_by, company_name, company_logo, company_website, industry,
@@ -74,7 +44,7 @@ const jobController = {
                     application_deadline, application_url, application_email,
                     positions_available, is_featured
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
                 RETURNING *`,
                 [
                     posted_by, company_name, company_logo || null, company_website || null, industry || null,
@@ -95,35 +65,19 @@ const jobController = {
 
         } catch (error) {
             console.error("Create job error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to create job"
-            });
+            res.status(500).json({ success: false, error: "Failed to create job" });
         }
     },
 
-    
-
-    // Get all jobs with filters
+    // ==================== GET ALL JOBS ====================
     getAllJobs: async (req, res) => {
         try {
             const {
-                job_type,
-                location,
-                location_type,
-                experience_level,
-                industry,
-                company_name,
-                salary_min,
-                salary_max,
-                skills,
-                is_featured,
-                posted_within_days,
-                search,
-                page = 1,
-                limit = 20,
-                sort_by = 'created_at',
-                sort_order = 'DESC'
+                job_type, location, location_type, experience_level, industry,
+                company_name, salary_min, salary_max, skills, is_featured,
+                posted_within_days, search,
+                page = 1, limit = 20,
+                sort_by = 'created_at', sort_order = 'DESC'
             } = req.query;
 
             let queryText = `
@@ -139,70 +93,63 @@ const jobController = {
             const queryParams = [];
             let paramCount = 0;
 
-            // Filters
             if (job_type) {
                 paramCount++;
                 queryText += ` AND j.job_type = $${paramCount}`;
                 queryParams.push(job_type);
             }
-
             if (location) {
                 paramCount++;
                 queryText += ` AND j.location ILIKE $${paramCount}`;
                 queryParams.push(`%${location}%`);
             }
-
             if (location_type) {
                 paramCount++;
                 queryText += ` AND j.location_type = $${paramCount}`;
                 queryParams.push(location_type);
             }
-
             if (experience_level) {
                 paramCount++;
                 queryText += ` AND j.experience_level = $${paramCount}`;
                 queryParams.push(experience_level);
             }
-
             if (industry) {
                 paramCount++;
                 queryText += ` AND j.industry ILIKE $${paramCount}`;
                 queryParams.push(`%${industry}%`);
             }
-
             if (company_name) {
                 paramCount++;
                 queryText += ` AND j.company_name ILIKE $${paramCount}`;
                 queryParams.push(`%${company_name}%`);
             }
-
             if (salary_min) {
                 paramCount++;
                 queryText += ` AND j.salary_max >= $${paramCount}`;
                 queryParams.push(salary_min);
             }
-
             if (salary_max) {
                 paramCount++;
                 queryText += ` AND j.salary_min <= $${paramCount}`;
                 queryParams.push(salary_max);
             }
-
             if (skills) {
                 paramCount++;
                 queryText += ` AND j.skills_required && $${paramCount}`;
                 queryParams.push(`{${skills}}`);
             }
-
             if (is_featured === 'true') {
                 queryText += ` AND j.is_featured = true`;
             }
-
             if (posted_within_days) {
-                paramCount++;
-                queryText += ` AND j.created_at >= NOW() - INTERVAL '${parseInt(posted_within_days)} days'`;
+                // ✅ parseInt sanitizes against injection; interval is safe
+                const days = parseInt(posted_within_days);
+                if (!isNaN(days) && days > 0) {
+                    paramCount++;
+                    queryText += ` AND j.created_at >= NOW() - ($${paramCount} * INTERVAL '1 day')`;
+                    queryParams.push(days);
+                }
             }
-
             if (search) {
                 paramCount++;
                 queryText += ` AND (
@@ -213,19 +160,19 @@ const jobController = {
                 queryParams.push(`%${search}%`);
             }
 
-            // Get total count
-            const countQuery = queryText.replace(/SELECT.*FROM/s, 'SELECT COUNT(*) FROM');
+            // Count
+            const countQuery = queryText.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) FROM');
             const countResult = await pool.query(countQuery, queryParams);
             const totalJobs = parseInt(countResult.rows[0].count);
 
-            // Add sorting and pagination
+            // Sort & paginate
             const validSortFields = ['created_at', 'job_title', 'salary_min', 'application_deadline', 'views_count'];
             const sortField = validSortFields.includes(sort_by) ? sort_by : 'created_at';
             const order = sort_order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-
             const offset = (page - 1) * limit;
+
             queryText += ` ORDER BY j.${sortField} ${order} LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
-            queryParams.push(limit, offset);
+            queryParams.push(parseInt(limit), offset);
 
             const result = await pool.query(queryText, queryParams);
 
@@ -243,23 +190,17 @@ const jobController = {
 
         } catch (error) {
             console.error("Get jobs error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to fetch jobs"
-            });
+            res.status(500).json({ success: false, error: "Failed to fetch jobs" });
         }
     },
 
-    // Get single job by ID
+    // ==================== GET JOB BY ID ====================
     getJobById: async (req, res) => {
         try {
             const { id } = req.params;
 
             if (isNaN(id)) {
-                return res.status(400).json({
-                    success: false,
-                    error: "Invalid job ID"
-                });
+                return res.status(400).json({ success: false, error: "Invalid job ID" });
             }
 
             const result = await pool.query(
@@ -275,52 +216,31 @@ const jobController = {
             );
 
             if (result.rows.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    error: "Job not found"
-                });
+                return res.status(404).json({ success: false, error: "Job not found" });
             }
 
-            res.status(200).json({
-                success: true,
-                data: result.rows[0]
-            });
+            res.status(200).json({ success: true, data: result.rows[0] });
 
         } catch (error) {
             console.error("Get job error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to fetch job"
-            });
+            res.status(500).json({ success: false, error: "Failed to fetch job" });
         }
     },
 
-    // Update job
+    // ==================== UPDATE JOB ====================
     updateJob: async (req, res) => {
         try {
             const { id } = req.params;
 
             if (isNaN(id)) {
-                return res.status(400).json({
-                    success: false,
-                    error: "Invalid job ID"
-                });
+                return res.status(400).json({ success: false, error: "Invalid job ID" });
             }
 
-            // Check if job exists
-            const jobCheck = await pool.query(
-                "SELECT id FROM jobs WHERE id = $1",
-                [id]
-            );
-
+            const jobCheck = await pool.query("SELECT id FROM jobs WHERE id = $1", [id]);
             if (jobCheck.rows.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    error: "Job not found"
-                });
+                return res.status(404).json({ success: false, error: "Job not found" });
             }
 
-            // Allowed fields to update
             const allowedFields = [
                 'company_name', 'company_logo', 'company_website', 'industry',
                 'job_title', 'job_description', 'job_type', 'location', 'location_type',
@@ -344,23 +264,16 @@ const jobController = {
             });
 
             if (updates.length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    error: "No valid fields to update"
-                });
+                return res.status(400).json({ success: false, error: "No valid fields to update" });
             }
 
             values.push(id);
             paramCount++;
 
-            const queryText = `
-                UPDATE jobs 
-                SET ${updates.join(', ')}
-                WHERE id = $${paramCount}
-                RETURNING *
-            `;
-
-            const result = await pool.query(queryText, values);
+            const result = await pool.query(
+                `UPDATE jobs SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+                values
+            );
 
             res.status(200).json({
                 success: true,
@@ -370,134 +283,85 @@ const jobController = {
 
         } catch (error) {
             console.error("Update job error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to update job"
-            });
+            res.status(500).json({ success: false, error: "Failed to update job" });
         }
     },
 
-    // Delete job (soft delete)
+    // ==================== DELETE JOB (soft delete) ====================
     deleteJob: async (req, res) => {
         try {
             const { id } = req.params;
 
             if (isNaN(id)) {
-                return res.status(400).json({
-                    success: false,
-                    error: "Invalid job ID"
-                });
+                return res.status(400).json({ success: false, error: "Invalid job ID" });
             }
 
-            const jobCheck = await pool.query(
-                "SELECT id FROM jobs WHERE id = $1",
+            const result = await pool.query(
+                "UPDATE jobs SET is_active = false WHERE id = $1 RETURNING id",
                 [id]
             );
 
-            if (jobCheck.rows.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    error: "Job not found"
-                });
+            if (result.rowCount === 0) {
+                return res.status(404).json({ success: false, error: "Job not found" });
             }
 
-            await pool.query(
-                "UPDATE jobs SET is_active = false WHERE id = $1",
-                [id]
-            );
-
-            res.status(200).json({
-                success: true,
-                message: "Job deleted successfully"
-            });
+            res.status(200).json({ success: true, message: "Job deleted successfully" });
 
         } catch (error) {
             console.error("Delete job error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to delete job"
-            });
+            res.status(500).json({ success: false, error: "Failed to delete job" });
         }
     },
 
-    // Increment view count
+    // ==================== INCREMENT VIEW COUNT ====================
     incrementViewCount: async (req, res) => {
         try {
-            const { id } = req.params;
-
             await pool.query(
                 "UPDATE jobs SET views_count = views_count + 1 WHERE id = $1",
-                [id]
+                [req.params.id]
             );
-
-            res.status(200).json({
-                success: true,
-                message: "View count updated"
-            });
-
+            res.status(200).json({ success: true, message: "View count updated" });
         } catch (error) {
             console.error("Increment view error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to update view count"
-            });
+            res.status(500).json({ success: false, error: "Failed to update view count" });
         }
     },
 
-    // Apply to job
+    // ==================== APPLY TO JOB ====================
     applyToJob: async (req, res) => {
         try {
             const { id } = req.params;
-            const { user_id, cover_letter, resume_url } = req.body;
+            // ✅ FIX: was req.body.user_id — user could apply as someone else
+            const userId = req.user.id || req.user.userId;
+            const { cover_letter, resume_url } = req.body;
 
-            if (!user_id) {
-                return res.status(400).json({
-                    success: false,
-                    error: "User ID is required"
-                });
-            }
-
-            // Check if job exists and is active
             const jobCheck = await pool.query(
                 "SELECT id, application_deadline FROM jobs WHERE id = $1 AND is_active = true",
                 [id]
             );
 
             if (jobCheck.rows.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    error: "Job not found or no longer active"
-                });
+                return res.status(404).json({ success: false, error: "Job not found or no longer active" });
             }
 
-            // Check if deadline has passed
             const job = jobCheck.rows[0];
             if (job.application_deadline && new Date(job.application_deadline) < new Date()) {
-                return res.status(400).json({
-                    success: false,
-                    error: "Application deadline has passed"
-                });
+                return res.status(400).json({ success: false, error: "Application deadline has passed" });
             }
 
-            // Check if user already applied
             const existingApplication = await pool.query(
                 "SELECT id FROM job_applications WHERE job_id = $1 AND user_id = $2",
-                [id, user_id]
+                [id, userId]
             );
 
             if (existingApplication.rows.length > 0) {
-                return res.status(409).json({
-                    success: false,
-                    error: "You have already applied to this job"
-                });
+                return res.status(409).json({ success: false, error: "You have already applied to this job" });
             }
 
-            // Create application
             const result = await pool.query(
                 `INSERT INTO job_applications (job_id, user_id, cover_letter, resume_url)
-                 VALUES ($1, $2, $3, $4)
-                 RETURNING *`,
-                [id, user_id, cover_letter || null, resume_url || null]
+                 VALUES ($1, $2, $3, $4) RETURNING *`,
+                [id, userId, cover_letter || null, resume_url || null]
             );
 
             res.status(201).json({
@@ -508,41 +372,28 @@ const jobController = {
 
         } catch (error) {
             console.error("Apply to job error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to submit application"
-            });
+            res.status(500).json({ success: false, error: "Failed to submit application" });
         }
     },
 
-    // Get user's applications
+    // ==================== GET MY APPLICATIONS ====================
     getMyApplications: async (req, res) => {
         try {
-            const { user_id } = req.query;
+            // ✅ FIX: was req.query.user_id — anyone could see anyone's applications
+            const userId = req.user.id || req.user.userId;
             const { status, page = 1, limit = 20 } = req.query;
-
-            if (!user_id) {
-                return res.status(400).json({
-                    success: false,
-                    error: "User ID is required"
-                });
-            }
 
             let queryText = `
                 SELECT 
                     ja.*,
-                    j.job_title,
-                    j.company_name,
-                    j.company_logo,
-                    j.location,
-                    j.job_type,
-                    j.is_active as job_is_active
+                    j.job_title, j.company_name, j.company_logo,
+                    j.location, j.job_type, j.is_active as job_is_active
                 FROM job_applications ja
                 JOIN jobs j ON ja.job_id = j.id
                 WHERE ja.user_id = $1
             `;
 
-            const queryParams = [user_id];
+            const queryParams = [userId];
             let paramCount = 1;
 
             if (status) {
@@ -551,15 +402,13 @@ const jobController = {
                 queryParams.push(status);
             }
 
-            // Get total count
-            const countQuery = queryText.replace(/SELECT.*FROM/s, 'SELECT COUNT(*) FROM');
+            const countQuery = queryText.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) FROM');
             const countResult = await pool.query(countQuery, queryParams);
             const totalApplications = parseInt(countResult.rows[0].count);
 
-            // Add pagination
             const offset = (page - 1) * limit;
             queryText += ` ORDER BY ja.applied_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
-            queryParams.push(limit, offset);
+            queryParams.push(parseInt(limit), offset);
 
             const result = await pool.query(queryText, queryParams);
 
@@ -577,14 +426,11 @@ const jobController = {
 
         } catch (error) {
             console.error("Get applications error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to fetch applications"
-            });
+            res.status(500).json({ success: false, error: "Failed to fetch applications" });
         }
     },
 
-    // Get job applications (for admin)
+    // ==================== GET JOB APPLICATIONS (Admin) ====================
     getJobApplications: async (req, res) => {
         try {
             const { id } = req.params;
@@ -593,14 +439,9 @@ const jobController = {
             let queryText = `
                 SELECT 
                     ja.*,
-                    u.first_name,
-                    u.last_name,
-                    u.email,
-                    u.phone_number,
-                    u.graduation_year,
-                    u.program_of_study,
-                    u.current_company,
-                    u.linkedin_url
+                    u.first_name, u.last_name, u.email, u.phone_number,
+                    u.graduation_year, u.program_of_study,
+                    u.current_company, u.linkedin_url
                 FROM job_applications ja
                 JOIN users u ON ja.user_id = u.id
                 WHERE ja.job_id = $1
@@ -615,15 +456,13 @@ const jobController = {
                 queryParams.push(status);
             }
 
-            // Get total count
-            const countQuery = queryText.replace(/SELECT.*FROM/s, 'SELECT COUNT(*) FROM');
+            const countQuery = queryText.replace(/SELECT[\s\S]*?FROM/, 'SELECT COUNT(*) FROM');
             const countResult = await pool.query(countQuery, queryParams);
             const totalApplications = parseInt(countResult.rows[0].count);
 
-            // Add pagination
             const offset = (page - 1) * limit;
             queryText += ` ORDER BY ja.applied_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
-            queryParams.push(limit, offset);
+            queryParams.push(parseInt(limit), offset);
 
             const result = await pool.query(queryText, queryParams);
 
@@ -641,18 +480,17 @@ const jobController = {
 
         } catch (error) {
             console.error("Get job applications error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to fetch applications"
-            });
+            res.status(500).json({ success: false, error: "Failed to fetch applications" });
         }
     },
 
-    // Update application status
+    // ==================== UPDATE APPLICATION STATUS (Admin) ====================
     updateApplicationStatus: async (req, res) => {
         try {
             const { id, appId } = req.params;
-            const { status, notes, reviewed_by } = req.body;
+            const { status, notes } = req.body;
+            // ✅ FIX: was req.body.reviewed_by — admin could credit another user
+            const reviewed_by = req.user.id || req.user.userId;
 
             const validStatuses = ['pending', 'reviewing', 'shortlisted', 'rejected', 'accepted', 'withdrawn'];
             if (!validStatuses.includes(status)) {
@@ -667,14 +505,11 @@ const jobController = {
                  SET status = $1, notes = $2, reviewed_by = $3, reviewed_at = CURRENT_TIMESTAMP
                  WHERE id = $4 AND job_id = $5
                  RETURNING *`,
-                [status, notes || null, reviewed_by || null, appId, id]
+                [status, notes || null, reviewed_by, appId, id]
             );
 
             if (result.rows.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    error: "Application not found"
-                });
+                return res.status(404).json({ success: false, error: "Application not found" });
             }
 
             res.status(200).json({
@@ -685,249 +520,158 @@ const jobController = {
 
         } catch (error) {
             console.error("Update application status error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to update application status"
-            });
+            res.status(500).json({ success: false, error: "Failed to update application status" });
         }
     },
 
-    // Save job
+    // ==================== SAVE JOB ====================
     saveJob: async (req, res) => {
-    try {
-        const { id } = req.params;
-        const userId = req.user.id; // Use authenticated user
+        try {
+            const { id } = req.params;
+            const userId = req.user.id || req.user.userId;
 
-        // Check if job exists
-        const jobCheck = await pool.query(
-            "SELECT id FROM jobs WHERE id = $1 AND is_active = true",
-            [id]
-        );
+            const jobCheck = await pool.query(
+                "SELECT id FROM jobs WHERE id = $1 AND is_active = true",
+                [id]
+            );
 
-        if (jobCheck.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                error: "Job not found"
-            });
-        }
-
-        // Check if already saved
-        const existingSave = await pool.query(
-            "SELECT id FROM saved_jobs WHERE job_id = $1 AND user_id = $2",
-            [id, userId]
-        );
-
-        if (existingSave.rows.length > 0) {
-            return res.status(409).json({
-                success: false,
-                error: "Job already saved"
-            });
-        }
-
-        // Save job
-        const result = await pool.query(
-            "INSERT INTO saved_jobs (job_id, user_id) VALUES ($1, $2) RETURNING *",
-            [id, userId]
-        );
-
-        res.status(201).json({
-            success: true,
-            message: "Job saved successfully",
-            data: result.rows[0]
-        });
-
-    } catch (error) {
-        console.error("Save job error:", error);
-        res.status(500).json({
-            success: false,
-            error: "Failed to save job"
-        });
-    }
-},
-   
-unsaveJob: async (req, res) => {
-    try {
-        const { id } = req.params;
-        const userId = req.user.id;
-
-        const result = await pool.query(
-            "DELETE FROM saved_jobs WHERE job_id = $1 AND user_id = $2 RETURNING *",
-            [id, userId]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                success: false,
-                error: "Saved job not found"
-            });
-        }
-
-        res.status(200).json({
-            success: true,
-            message: "Job unsaved successfully"
-        });
-
-    } catch (error) {
-        console.error("Unsave job error:", error);
-        res.status(500).json({
-            success: false,
-            error: "Failed to unsave job"
-        });
-    }
-},
-
-
-getSavedJobIds: async (req, res) => {
-    try {
-        const userId = req.user.id; // From JWT token
-
-        const result = await pool.query(
-            `SELECT job_id FROM saved_jobs WHERE user_id = $1`,
-            [userId]
-        );
-
-        const jobIds = result.rows.map(row => row.job_id);
-
-        res.status(200).json({
-            success: true,
-            data: jobIds
-        });
-
-    } catch (error) {
-        console.error("Get saved job IDs error:", error);
-        res.status(500).json({
-            success: false,
-            error: "Failed to fetch saved job IDs"
-        });
-    }
-},
-    // Get saved jobs - FIXED
-getSavedJobs: async (req, res) => {
-    try {
-        const userId = req.user.id; // Use authenticated user
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 20;
-        const offset = (page - 1) * limit;
-
-        // Get total count
-        const countResult = await pool.query(
-            `SELECT COUNT(*) 
-             FROM saved_jobs sj
-             JOIN jobs j ON sj.job_id = j.id
-             WHERE sj.user_id = $1 AND j.is_active = true`,
-            [userId]
-        );
-        const totalSaved = parseInt(countResult.rows[0].count);
-
-        // Get paginated jobs
-        const result = await pool.query(
-            `SELECT 
-                j.*,
-                u.first_name || ' ' || u.last_name as posted_by_name,
-                u.email as posted_by_email
-             FROM saved_jobs sj
-             JOIN jobs j ON sj.job_id = j.id
-             LEFT JOIN users u ON j.posted_by = u.id
-             WHERE sj.user_id = $1 AND j.is_active = true
-             ORDER BY sj.saved_at DESC
-             LIMIT $2 OFFSET $3`,
-            [userId, limit, offset]
-        );
-
-        res.status(200).json({
-            success: true,
-            total: totalSaved,
-            data: result.rows, // Clean Job objects only
-            pagination: {
-                page,
-                limit,
-                total_pages: Math.ceil(totalSaved / limit)
+            if (jobCheck.rows.length === 0) {
+                return res.status(404).json({ success: false, error: "Job not found" });
             }
-        });
 
-    } catch (error) {
-        console.error("Get saved jobs error:", error);
-        res.status(500).json({
-            success: false,
-            error: "Failed to fetch saved jobs"
-        });
-    }
-},
-    // Get job statistics
+            const existingSave = await pool.query(
+                "SELECT id FROM saved_jobs WHERE job_id = $1 AND user_id = $2",
+                [id, userId]
+            );
+
+            if (existingSave.rows.length > 0) {
+                return res.status(409).json({ success: false, error: "Job already saved" });
+            }
+
+            const result = await pool.query(
+                "INSERT INTO saved_jobs (job_id, user_id) VALUES ($1, $2) RETURNING *",
+                [id, userId]
+            );
+
+            res.status(201).json({
+                success: true,
+                message: "Job saved successfully",
+                data: result.rows[0]
+            });
+
+        } catch (error) {
+            console.error("Save job error:", error);
+            res.status(500).json({ success: false, error: "Failed to save job" });
+        }
+    },
+
+    // ==================== UNSAVE JOB ====================
+    unsaveJob: async (req, res) => {
+        try {
+            const { id } = req.params;
+            const userId = req.user.id || req.user.userId;
+
+            const result = await pool.query(
+                "DELETE FROM saved_jobs WHERE job_id = $1 AND user_id = $2 RETURNING *",
+                [id, userId]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ success: false, error: "Saved job not found" });
+            }
+
+            res.status(200).json({ success: true, message: "Job unsaved successfully" });
+
+        } catch (error) {
+            console.error("Unsave job error:", error);
+            res.status(500).json({ success: false, error: "Failed to unsave job" });
+        }
+    },
+
+    // ==================== GET SAVED JOB IDs ====================
+    getSavedJobIds: async (req, res) => {
+        try {
+            const userId = req.user.id || req.user.userId;
+
+            const result = await pool.query(
+                "SELECT job_id FROM saved_jobs WHERE user_id = $1",
+                [userId]
+            );
+
+            res.status(200).json({
+                success: true,
+                data: result.rows.map(row => row.job_id)
+            });
+
+        } catch (error) {
+            console.error("Get saved job IDs error:", error);
+            res.status(500).json({ success: false, error: "Failed to fetch saved job IDs" });
+        }
+    },
+
+    // ==================== GET SAVED JOBS ====================
+    getSavedJobs: async (req, res) => {
+        try {
+            const userId = req.user.id || req.user.userId;
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 20;
+            const offset = (page - 1) * limit;
+
+            const countResult = await pool.query(
+                `SELECT COUNT(*) FROM saved_jobs sj
+                 JOIN jobs j ON sj.job_id = j.id
+                 WHERE sj.user_id = $1 AND j.is_active = true`,
+                [userId]
+            );
+            const totalSaved = parseInt(countResult.rows[0].count);
+
+            const result = await pool.query(
+                `SELECT 
+                    j.*,
+                    u.first_name || ' ' || u.last_name as posted_by_name,
+                    u.email as posted_by_email
+                 FROM saved_jobs sj
+                 JOIN jobs j ON sj.job_id = j.id
+                 LEFT JOIN users u ON j.posted_by = u.id
+                 WHERE sj.user_id = $1 AND j.is_active = true
+                 ORDER BY sj.saved_at DESC
+                 LIMIT $2 OFFSET $3`,
+                [userId, limit, offset]
+            );
+
+            res.status(200).json({
+                success: true,
+                total: totalSaved,
+                data: result.rows,
+                pagination: {
+                    page,
+                    limit,
+                    total_pages: Math.ceil(totalSaved / limit)
+                }
+            });
+
+        } catch (error) {
+            console.error("Get saved jobs error:", error);
+            res.status(500).json({ success: false, error: "Failed to fetch saved jobs" });
+        }
+    },
+
+    // ==================== GET JOB STATS ====================
     getJobStats: async (req, res) => {
         try {
-            // Total jobs
-            const totalResult = await pool.query(
-                "SELECT COUNT(*) as total FROM jobs WHERE is_active = true"
-            );
-
-            // Jobs by type
-            const typeResult = await pool.query(
-                `SELECT job_type, COUNT(*) as count 
-                 FROM jobs 
-                 WHERE is_active = true 
-                 GROUP BY job_type 
-                 ORDER BY count DESC`
-            );
-
-            // Jobs by location
-            const locationResult = await pool.query(
-                `SELECT location, COUNT(*) as count 
-                 FROM jobs 
-                 WHERE is_active = true 
-                 GROUP BY location 
-                 ORDER BY count DESC 
-                 LIMIT 10`
-            );
-
-            // Top companies
-            const companiesResult = await pool.query(
-                `SELECT company_name, COUNT(*) as job_count 
-                 FROM jobs 
-                 WHERE is_active = true 
-                 GROUP BY company_name 
-                 ORDER BY job_count DESC 
-                 LIMIT 10`
-            );
-
-            // Total applications
-            const applicationsResult = await pool.query(
-                "SELECT COUNT(*) as total FROM job_applications"
-            );
-
-            // Applications by status
-            const statusResult = await pool.query(
-                `SELECT status, COUNT(*) as count 
-                 FROM job_applications 
-                 GROUP BY status 
-                 ORDER BY count DESC`
-            );
-
-            // Recent jobs (last 30 days)
-            const recentResult = await pool.query(
-                `SELECT COUNT(*) as count 
-                 FROM jobs 
-                 WHERE is_active = true 
-                 AND created_at >= NOW() - INTERVAL '30 days'`
-            );
-
-            // Most viewed jobs
-            const viewedResult = await pool.query(
-                `SELECT id, job_title, company_name, views_count 
-                 FROM jobs 
-                 WHERE is_active = true 
-                 ORDER BY views_count DESC 
-                 LIMIT 10`
-            );
-
-            // Most applied jobs
-            const appliedResult = await pool.query(
-                `SELECT id, job_title, company_name, applications_count 
-                 FROM jobs 
-                 WHERE is_active = true 
-                 ORDER BY applications_count DESC 
-                 LIMIT 10`
-            );
+            const [totalResult, typeResult, locationResult, companiesResult,
+                   applicationsResult, statusResult, recentResult, viewedResult, appliedResult] =
+                await Promise.all([
+                    pool.query("SELECT COUNT(*) as total FROM jobs WHERE is_active = true"),
+                    pool.query(`SELECT job_type, COUNT(*) as count FROM jobs WHERE is_active = true GROUP BY job_type ORDER BY count DESC`),
+                    pool.query(`SELECT location, COUNT(*) as count FROM jobs WHERE is_active = true GROUP BY location ORDER BY count DESC LIMIT 10`),
+                    pool.query(`SELECT company_name, COUNT(*) as job_count FROM jobs WHERE is_active = true GROUP BY company_name ORDER BY job_count DESC LIMIT 10`),
+                    pool.query("SELECT COUNT(*) as total FROM job_applications"),
+                    pool.query(`SELECT status, COUNT(*) as count FROM job_applications GROUP BY status ORDER BY count DESC`),
+                    pool.query(`SELECT COUNT(*) as count FROM jobs WHERE is_active = true AND created_at >= NOW() - INTERVAL '30 days'`),
+                    pool.query(`SELECT id, job_title, company_name, views_count FROM jobs WHERE is_active = true ORDER BY views_count DESC LIMIT 10`),
+                    pool.query(`SELECT id, job_title, company_name, applications_count FROM jobs WHERE is_active = true ORDER BY applications_count DESC LIMIT 10`)
+                ]);
 
             res.status(200).json({
                 success: true,
@@ -946,57 +690,9 @@ getSavedJobs: async (req, res) => {
 
         } catch (error) {
             console.error("Get job stats error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to fetch job statistics"
-            });
+            res.status(500).json({ success: false, error: "Failed to fetch job statistics" });
         }
     }
 };
-
-
-const checkJobOwnership = async (jobId, userId, isAdmin) => {
-    const result = await pool.query(
-        "SELECT posted_by FROM jobs WHERE id = $1",
-        [jobId]
-    );
-    
-    if (result.rows.length === 0) {
-        return { exists: false, isOwner: false };
-    }
-    
-    const isOwner = result.rows[0].posted_by === parseInt(userId);
-    return { 
-        exists: true, 
-        isOwner: isOwner || isAdmin 
-    };
-};
-
-
-// Add to jobController.js
-getAllSavedJobIds: async (req, res) => {
-    try {
-        const userId = req.user.id;
-
-        const result = await pool.query(
-            `SELECT job_id FROM saved_jobs WHERE user_id = $1`,
-            [userId]
-        );
-
-        const jobIds = result.rows.map(row => row.job_id);
-
-        res.status(200).json({
-            success: true,
-            data: jobIds
-        });
-
-    } catch (error) {
-        console.error("Get saved job IDs error:", error);
-        res.status(500).json({
-            success: false,
-            error: "Failed to fetch saved job IDs"
-        });
-    }
-}
 
 export default jobController;

@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import helmet from "helmet";
+import morgan from "morgan";
 import pool from "./config/db.js";
 import path from "path";
 import { fileURLToPath } from 'url';
@@ -42,7 +43,7 @@ app.use(helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-app.use(cors({
+const corsOptions = {
     origin: [
         'https://atu-alumni-network.web.app',
         'https://atu-alumni-network.firebaseapp.com',
@@ -53,7 +54,12 @@ app.use(cors({
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
+};
+
+app.use(cors(corsOptions));
+
+
+app.use(morgan('combined'));
 
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '10mb' }));
@@ -72,10 +78,10 @@ app.use('/api/uploads', express.static(uploadsPath, {
     }
 }));
 
-// ================== RATE LIMITER — NOW SKIPS /api/uploads ==================
+// ================== RATE LIMITER — SKIPS /api/uploads ==================
 app.use('/api/', apiLimiter);
 
-// ================== ROUTES ==================
+// ================== UTILITY ROUTES ==================
 
 app.get("/", async (req, res) => {
     try {
@@ -134,7 +140,7 @@ app.get("/api/health", async (req, res) => {
 app.get("/api/test/images", (req, res) => {
     try {
         const profilesDir = path.join(__dirname, '../public/uploads/profiles');
-        
+
         if (!fs.existsSync(profilesDir)) {
             return res.status(404).json({
                 success: false,
@@ -142,9 +148,9 @@ app.get("/api/test/images", (req, res) => {
                 path: profilesDir
             });
         }
-        
+
         const files = fs.readdirSync(profilesDir);
-        
+
         res.json({
             success: true,
             directory: profilesDir,
@@ -181,7 +187,7 @@ app.use(notFound);
 app.use(errorHandler);
 
 // ================== START SERVER ==================
-app.listen(port, () => {
+const server = app.listen(port, () => {
     console.log(`
 ╔════════════════════════════════════════╗
 ║  ATU Alumni Network API                ║
@@ -195,6 +201,21 @@ app.listen(port, () => {
   Health Check:    /api/health
   Test Images:     /api/test/images
     `);
+});
+
+// ✅ FIX: Graceful shutdown — Cloud Run sends SIGTERM before killing the container.
+// Without this, in-flight DB queries get cut off abruptly.
+process.on('SIGTERM', async () => {
+    console.log('SIGTERM received. Closing HTTP server and DB pool...');
+    server.close(async () => {
+        try {
+            await pool.end();
+            console.log('✅ DB pool closed. Server shut down gracefully.');
+        } catch (err) {
+            console.error('Error closing DB pool:', err);
+        }
+        process.exit(0);
+    });
 });
 
 process.on('unhandledRejection', (err) => {

@@ -146,11 +146,11 @@ export const optionalAuth = async (req, res, next) => {
     }
 };
 
-// ==================== 🔥 CHECK IF USER OWNS THEIR PROFILE OR IS ADMIN ====================
+// ==================== CHECK IF USER OWNS THEIR PROFILE OR IS ADMIN ====================
 /**
- * Check if user is updating their own profile or is an admin
- * Used for: Profile updates, password changes
- * 
+ * Check if user is updating their own profile or is an admin.
+ * Used for: Profile updates, password changes.
+ *
  * @example
  * router.put("/:id", verifyToken, isOwnerOrAdmin, userController.updateUser);
  */
@@ -175,21 +175,24 @@ export const isOwnerOrAdmin = (req, res, next) => {
     });
 };
 
-// ==================== 🔥 CHECK RESOURCE OWNERSHIP (FORUM & COMMENTS ONLY) ====================
+// ==================== CHECK RESOURCE OWNERSHIP ====================
 /**
- * Check if user owns a resource (forum post, reply, or comment) OR is admin
- * ONLY USED FOR: Forum posts, forum replies, event comments, news comments
- * NOT USED FOR: Events, jobs, news articles (those are admin-only)
- * 
- * @param {string} resourceType - 'forum_post', 'forum_reply', 'event_comment', 'news_comment'
- * @param {string} idParamName - Parameter name containing resource ID (default: 'id')
- * 
+ * Check if user owns a resource OR is admin.
+ *
+ * Supported resource types:
+ *   - 'forum_post'      → forum_posts table
+ *   - 'forum_reply'     → forum_replies table
+ *   - 'event_comment'   → event_comments table
+ *   - 'news_comment'    → news_comments table
+ *   - 'tracer_study'    → tracer_study_responses table
+ *
+ * NOT used for: Events, jobs, news articles (those are admin-only create/edit).
+ *
+ * @param {string} resourceType  - One of the types listed above
+ * @param {string} idParamName   - Route param containing the resource ID (default: 'id')
+ *
  * @example
- * // Forum post (user can edit their own post)
  * router.put("/posts/:id", verifyToken, checkResourceOwnership('forum_post'), forumController.updatePost);
- * 
- * @example
- * // Event comment (user can edit their own comment)
  * router.put("/:id/comments/:commentId", verifyToken, checkResourceOwnership('event_comment', 'commentId'), eventController.updateComment);
  */
 export const checkResourceOwnership = (resourceType, idParamName = 'id') => async (req, res, next) => {
@@ -215,7 +218,6 @@ export const checkResourceOwnership = (resourceType, idParamName = 'id') => asyn
         });
     }
 
-    // ✅ ONLY these resources can be owned by regular users
     const resourceQueries = {
         'forum_post': {
             query: 'SELECT user_id FROM forum_posts WHERE id = $1',
@@ -259,6 +261,8 @@ export const checkResourceOwnership = (resourceType, idParamName = 'id') => asyn
             });
         }
 
+        // ✅ FIX: parseInt on both sides — DB may return user_id as string
+        // depending on pg driver version and column type
         const ownerId = parseInt(result.rows[0].user_id);
 
         if (ownerId === userId) {
@@ -278,11 +282,11 @@ export const checkResourceOwnership = (resourceType, idParamName = 'id') => asyn
     }
 };
 
-// ==================== 🔥 CHECK POST AUTHOR (FOR MARKING SOLUTIONS) ====================
+// ==================== CHECK POST AUTHOR (FOR MARKING SOLUTIONS) ====================
 /**
- * Check if user is the original post author
- * Used only for marking forum replies as solutions
- * 
+ * Check if user is the original post author.
+ * Used only for marking forum replies as solutions.
+ *
  * @example
  * router.post("/:id/replies/:replyId/solution", verifyToken, isPostAuthor, forumController.markAsSolution);
  */
@@ -310,7 +314,8 @@ export const isPostAuthor = async (req, res, next) => {
             });
         }
 
-        if (result.rows[0].user_id === userId || req.user.role === 'admin') {
+        // ✅ FIX: parseInt on DB value — user_id may return as string from pg driver
+        if (parseInt(result.rows[0].user_id) === userId || req.user.role === 'admin') {
             return next();
         }
 

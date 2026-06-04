@@ -14,6 +14,7 @@ const NotificationModel = {
                 message TEXT NOT NULL,
                 link VARCHAR(500),
                 is_read BOOLEAN DEFAULT FALSE,
+                read_at TIMESTAMP,
                 metadata JSONB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -27,17 +28,15 @@ const NotificationModel = {
             CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, is_read, created_at DESC);
 
             -- ==================== TRIGGERS ====================
-            
-            -- Create update function if not exists
+
             CREATE OR REPLACE FUNCTION update_notifications_updated_at()
-            RETURNS TRIGGER AS $$
+            RETURNS TRIGGER AS \$\$
             BEGIN
                 NEW.updated_at = CURRENT_TIMESTAMP;
                 RETURN NEW;
             END;
-            $$ LANGUAGE plpgsql;
+            \$\$ LANGUAGE plpgsql;
 
-            -- Notifications trigger
             DROP TRIGGER IF EXISTS update_notifications_updated_at ON notifications;
             CREATE TRIGGER update_notifications_updated_at
                 BEFORE UPDATE ON notifications
@@ -46,7 +45,6 @@ const NotificationModel = {
 
             -- ==================== VIEWS ====================
 
-            -- View: Notification stats by user
             CREATE OR REPLACE VIEW v_notification_stats AS
             SELECT 
                 user_id,
@@ -64,7 +62,6 @@ const NotificationModel = {
             FROM notifications
             GROUP BY user_id;
 
-            -- View: Recent unread notifications
             CREATE OR REPLACE VIEW v_recent_unread_notifications AS
             SELECT 
                 n.id,
@@ -84,7 +81,6 @@ const NotificationModel = {
             AND n.created_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
             ORDER BY n.created_at DESC;
 
-            -- View: Notification activity summary
             CREATE OR REPLACE VIEW v_notification_activity AS
             SELECT 
                 DATE(created_at) as notification_date,
@@ -99,7 +95,8 @@ const NotificationModel = {
 
             -- ==================== COMMENTS ====================
             COMMENT ON TABLE notifications IS 'Stores all in-app notifications for users';
-            COMMENT ON COLUMN notifications.type IS 'Type of notification: connection_request, connection_accepted, event_rsvp, event_reminder, job_application, message, forum_reply, system';
+            COMMENT ON COLUMN notifications.type IS 'Type: connection_request, connection_accepted, event_rsvp, event_reminder, job_application, message, forum_reply, system';
+            COMMENT ON COLUMN notifications.read_at IS 'Timestamp when notification was marked as read';
             COMMENT ON COLUMN notifications.metadata IS 'Additional data stored as JSON (e.g., sender_id, event_id, job_id)';
             COMMENT ON COLUMN notifications.link IS 'Internal app link to navigate when notification is clicked';
         `;

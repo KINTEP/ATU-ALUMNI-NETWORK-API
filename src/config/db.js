@@ -6,7 +6,6 @@ dotenv.config();
 
 const { Pool } = pg;
 
-// Determine if running in production with Cloud SQL
 const isProduction = process.env.NODE_ENV === 'production';
 const useCloudSQL = isProduction && process.env.DB_HOST?.includes('/cloudsql/');
 
@@ -24,9 +23,12 @@ const poolConfig = {
         }),
     max: 20,
     idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
+    // ✅ FIX: Reduced from 10000ms — a 10s wait before error is too long for Cloud Run.
+    // Users would stare at a spinner for 10s before getting a 500. 5s is the right balance.
+    connectionTimeoutMillis: 5000,
 };
 
+// ✅ SAFE: Never log password — only connection metadata
 console.log('Database config:', {
     user: poolConfig.user,
     database: poolConfig.database,
